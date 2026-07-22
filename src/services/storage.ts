@@ -132,6 +132,12 @@ function addDeletedSongId(id: string) {
   }
 }
 
+function removeDeletedSongId(id: string) {
+  const current = getDeletedSongIds();
+  const updated = current.filter((deletedId) => deletedId !== id);
+  localStorage.setItem(DELETED_SONGS_KEY, JSON.stringify(updated));
+}
+
 function getDeletedAdIds(): string[] {
   try {
     const raw = localStorage.getItem(DELETED_ADS_KEY);
@@ -158,14 +164,14 @@ export async function syncServerData(): Promise<void> {
       fetch('/api/deleted').catch(() => null)
     ]);
 
-    // 1. Sync server-side deletion records first so viewer client knows what was deleted
+    // 1. Sync server-side deletion records as source of truth
     if (resDeleted && resDeleted.ok && resDeleted.headers.get('content-type')?.includes('application/json')) {
       const serverDeleted = await resDeleted.json();
       if (Array.isArray(serverDeleted.deletedSongIds)) {
-        serverDeleted.deletedSongIds.forEach((id: string) => addDeletedSongId(id));
+        localStorage.setItem(DELETED_SONGS_KEY, JSON.stringify(serverDeleted.deletedSongIds));
       }
       if (Array.isArray(serverDeleted.deletedAdIds)) {
-        serverDeleted.deletedAdIds.forEach((id: string) => addDeletedAdId(id));
+        localStorage.setItem(DELETED_ADS_KEY, JSON.stringify(serverDeleted.deletedAdIds));
       }
     }
 
@@ -251,7 +257,6 @@ export function saveSongs(songs: Song[]): void {
 
 export async function addSong(newSong: Omit<Song, 'id' | 'viewsCount' | 'playCount' | 'likesCount' | 'sharesCount' | 'createdAt'>): Promise<Song> {
   // 1. Create song object with unique ID
-  const songs = getSongs();
   const song: Song = {
     ...newSong,
     id: 'song-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
@@ -262,11 +267,20 @@ export async function addSong(newSong: Omit<Song, 'id' | 'viewsCount' | 'playCou
     createdAt: new Date().toISOString(),
   };
 
-  // 2. Save locally and to IndexedDB immediately so upload succeeds instantly
-  const updated = [song, ...songs];
+  // 2. Ensure ID is not marked deleted
+  removeDeletedSongId(song.id);
+
+  // 3. Save base64 audio into IndexedDB if needed
+  if (song.audioUrl && song.audioUrl.startsWith('data:')) {
+    await saveAudioTrack(song.id, song.audioUrl);
+  }
+
+  // 4. Save locally immediately
+  const songs = getSongs();
+  const updated = [song, ...songs.filter((s) => s.id !== song.id)];
   saveSongs(updated);
 
-  // 3. Sync to backend server
+  // 5. Sync to backend server
   try {
     const res = await fetch('/api/songs', {
       method: 'POST',
@@ -276,7 +290,7 @@ export async function addSong(newSong: Omit<Song, 'id' | 'viewsCount' | 'playCou
     if (res.ok) {
       const serverSong: Song = await res.json();
       const current = getSongs();
-      const synced = current.map((s) => (s.id === song.id ? serverSong : s));
+      const synced = [serverSong, ...current.filter((s) => s.id !== serverSong.id)];
       saveSongs(synced);
       return serverSong;
     }

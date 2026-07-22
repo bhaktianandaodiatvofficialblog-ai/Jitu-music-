@@ -10,8 +10,8 @@ const DATA_DIR = path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 
 // Enable JSON body parsing with large payload limit for 1:1 image uploads
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
 // Initial default database state
 const DEFAULT_SONGS = [
@@ -118,6 +118,8 @@ const DEFAULT_COMMENTS = [
 let songs = [...DEFAULT_SONGS];
 let ads = [...DEFAULT_ADS];
 let comments = [...DEFAULT_COMMENTS];
+let deletedSongIds: string[] = [];
+let deletedAdIds: string[] = [];
 
 function loadDB() {
   try {
@@ -130,6 +132,8 @@ function loadDB() {
       if (Array.isArray(data.songs)) songs = data.songs;
       if (Array.isArray(data.ads)) ads = data.ads;
       if (Array.isArray(data.comments)) comments = data.comments;
+      if (Array.isArray(data.deletedSongIds)) deletedSongIds = data.deletedSongIds;
+      if (Array.isArray(data.deletedAdIds)) deletedAdIds = data.deletedAdIds;
     } else {
       saveDB();
     }
@@ -143,7 +147,7 @@ function saveDB() {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
-    fs.writeFileSync(DB_FILE, JSON.stringify({ songs, ads, comments }, null, 2), 'utf-8');
+    fs.writeFileSync(DB_FILE, JSON.stringify({ songs, ads, comments, deletedSongIds, deletedAdIds }, null, 2), 'utf-8');
   } catch (err) {
     console.warn('Could not write persistent db file:', err);
   }
@@ -168,18 +172,35 @@ app.post('/api/admin/login', (req, res) => {
   }
 });
 
+// Clear All Songs Endpoint
+app.post('/api/admin/clear-all-songs', (req, res) => {
+  songs.forEach((s) => {
+    if (!deletedSongIds.includes(s.id)) deletedSongIds.push(s.id);
+  });
+  songs = [];
+  saveDB();
+  res.json({ success: true, message: 'All songs deleted from server database' });
+});
+
 // Reset Database
 app.post('/api/reset', (req, res) => {
   songs = [...DEFAULT_SONGS];
   ads = [...DEFAULT_ADS];
   comments = [...DEFAULT_COMMENTS];
+  deletedSongIds = [];
+  deletedAdIds = [];
   saveDB();
   res.json({ success: true, message: 'Reset database to defaults' });
 });
 
+// Deleted IDs Endpoint
+app.get('/api/deleted', (req, res) => {
+  res.json({ deletedSongIds, deletedAdIds });
+});
+
 // Songs Endpoints
 app.get('/api/songs', (req, res) => {
-  res.json(songs);
+  res.json(songs.filter((s) => !deletedSongIds.includes(s.id)));
 });
 
 app.post('/api/songs', (req, res) => {
@@ -188,17 +209,28 @@ app.post('/api/songs', (req, res) => {
     return res.status(400).json({ error: 'Missing required song fields' });
   }
 
+  const songId = newSong.id || ('song-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6));
+
+  // Remove from deleted list if it was previously marked deleted
+  deletedSongIds = deletedSongIds.filter((id) => id !== songId);
+
   const song = {
     ...newSong,
-    id: 'song-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
-    viewsCount: 0,
-    playCount: 0,
-    likesCount: 0,
-    sharesCount: 0,
-    createdAt: new Date().toISOString(),
+    id: songId,
+    viewsCount: typeof newSong.viewsCount === 'number' ? newSong.viewsCount : 0,
+    playCount: typeof newSong.playCount === 'number' ? newSong.playCount : 0,
+    likesCount: typeof newSong.likesCount === 'number' ? newSong.likesCount : 0,
+    sharesCount: typeof newSong.sharesCount === 'number' ? newSong.sharesCount : 0,
+    createdAt: newSong.createdAt || new Date().toISOString(),
   };
 
-  songs.unshift(song);
+  const existingIdx = songs.findIndex((s) => s.id === songId);
+  if (existingIdx >= 0) {
+    songs[existingIdx] = song;
+  } else {
+    songs.unshift(song);
+  }
+
   saveDB();
   res.status(201).json(song);
 });
@@ -207,6 +239,8 @@ app.delete('/api/songs/:id', (req, res) => {
   const { id } = req.params;
   const decoded = decodeURIComponent(id);
   songs = songs.filter((s) => s.id !== id && s.id !== decoded);
+  if (!deletedSongIds.includes(id)) deletedSongIds.push(id);
+  if (!deletedSongIds.includes(decoded)) deletedSongIds.push(decoded);
   saveDB();
   res.json({ success: true, id });
 });

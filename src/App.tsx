@@ -168,15 +168,20 @@ export default function App() {
 
   const handleAddSong = async (newSong: Omit<Song, 'id' | 'viewsCount' | 'playCount' | 'likesCount' | 'sharesCount' | 'createdAt'>) => {
     const added = await addSong(newSong);
-    setSongs(getSongs());
-    // Auto start playing new upload if user wants
+    await syncServerData();
+    refreshData();
+    // Clear search and category filters so the newly uploaded song shows up immediately
+    setSearchTerm('');
+    setSelectedCategory(language === 'or' ? 'ସବୁ (All)' : 'All');
+    // Set as current playing song
     setCurrentSong(added);
     setIsPlaying(true);
   };
 
   const handleDeleteSong = async (songId: string) => {
     await deleteSong(songId);
-    setSongs(getSongs());
+    await syncServerData();
+    refreshData();
     if (currentSong?.id === songId) {
       setCurrentSong(null);
       setIsPlaying(false);
@@ -185,29 +190,42 @@ export default function App() {
 
   const handleAddAd = async (newAd: Omit<Advertisement, 'id' | 'clicksCount' | 'createdAt'>) => {
     await addAd(newAd);
-    setAds(getAds());
+    await syncServerData();
+    refreshData();
   };
 
   const handleDeleteAd = async (adId: string) => {
     await deleteAd(adId);
-    setAds(getAds());
+    await syncServerData();
+    refreshData();
   };
 
   const handleAdClick = (ad: Advertisement) => {
     incrementAdClick(ad.id);
-    setAds(getAds());
+    refreshData();
     window.open(ad.targetUrl, '_blank');
   };
 
   // Filter songs by search term & category
   const filteredSongs = songs.filter((song) => {
+    const term = searchTerm.trim().toLowerCase();
     const matchesSearch =
-      song.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      song.artist.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      song.category.toLowerCase().includes(searchTerm.toLowerCase());
+      !term ||
+      song.title.toLowerCase().includes(term) ||
+      song.artist.toLowerCase().includes(term) ||
+      song.category.toLowerCase().includes(term) ||
+      (song.description && song.description.toLowerCase().includes(term));
 
-    const isAllCategory = selectedCategory === 'ସବୁ (All)' || selectedCategory === 'All';
-    const matchesCategory = isAllCategory || song.category.toLowerCase() === selectedCategory.toLowerCase();
+    const isAllCategory =
+      !selectedCategory ||
+      selectedCategory === 'ସବୁ (All)' ||
+      selectedCategory === 'All' ||
+      selectedCategory.toLowerCase().includes('all') ||
+      selectedCategory.toLowerCase().includes('ସବୁ');
+
+    const matchesCategory =
+      isAllCategory ||
+      song.category.trim().toLowerCase() === selectedCategory.trim().toLowerCase();
 
     return matchesSearch && matchesCategory;
   });
