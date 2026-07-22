@@ -1,9 +1,13 @@
 import express from 'express';
+import fs from 'fs';
+import path from 'path';
 
 const app = express();
 
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
+
+const DATA_FILE = path.join(process.cwd(), '.server_data.json');
 
 // Initial default database state
 const DEFAULT_SONGS = [
@@ -113,6 +117,37 @@ let comments = [...DEFAULT_COMMENTS];
 let deletedSongIds: string[] = [];
 let deletedAdIds: string[] = [];
 
+function loadServerData() {
+  try {
+    if (fs.existsSync(DATA_FILE)) {
+      const raw = fs.readFileSync(DATA_FILE, 'utf-8');
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed.songs)) songs = parsed.songs;
+      if (Array.isArray(parsed.ads)) ads = parsed.ads;
+      if (Array.isArray(parsed.comments)) comments = parsed.comments;
+      if (Array.isArray(parsed.deletedSongIds)) deletedSongIds = parsed.deletedSongIds;
+      if (Array.isArray(parsed.deletedAdIds)) deletedAdIds = parsed.deletedAdIds;
+    }
+  } catch (e) {
+    console.warn('Could not load server data file:', e);
+  }
+}
+
+function persistServerData() {
+  try {
+    fs.writeFileSync(
+      DATA_FILE,
+      JSON.stringify({ songs, ads, comments, deletedSongIds, deletedAdIds }),
+      'utf-8'
+    );
+  } catch (e) {
+    console.warn('Could not persist server data file:', e);
+  }
+}
+
+// Initialize server data from disk
+loadServerData();
+
 const ADMIN_PIN = '543213@';
 
 app.get('/api/health', (req, res) => {
@@ -128,12 +163,22 @@ app.post('/api/admin/login', (req, res) => {
   }
 });
 
+app.post('/api/admin/clear-all-songs', (req, res) => {
+  songs.forEach((s) => {
+    if (!deletedSongIds.includes(s.id)) deletedSongIds.push(s.id);
+  });
+  songs = [];
+  persistServerData();
+  res.json({ success: true, message: 'All songs deleted from server database' });
+});
+
 app.post('/api/reset', (req, res) => {
   songs = [...DEFAULT_SONGS];
   ads = [...DEFAULT_ADS];
   comments = [...DEFAULT_COMMENTS];
   deletedSongIds = [];
   deletedAdIds = [];
+  persistServerData();
   res.json({ success: true, message: 'Reset database to defaults' });
 });
 
@@ -162,6 +207,7 @@ app.post('/api/songs', (req, res) => {
   };
 
   songs.unshift(song);
+  persistServerData();
   res.status(201).json(song);
 });
 
@@ -171,6 +217,7 @@ app.delete('/api/songs/:id', (req, res) => {
   songs = songs.filter((s) => s.id !== id && s.id !== decoded);
   if (!deletedSongIds.includes(id)) deletedSongIds.push(id);
   if (!deletedSongIds.includes(decoded)) deletedSongIds.push(decoded);
+  persistServerData();
   res.json({ success: true, id });
 });
 
@@ -193,6 +240,7 @@ app.post('/api/ads', (req, res) => {
   };
 
   ads.unshift(ad);
+  persistServerData();
   res.status(201).json(ad);
 });
 
@@ -202,6 +250,7 @@ app.delete('/api/ads/:id', (req, res) => {
   ads = ads.filter((a) => a.id !== id && a.id !== decoded);
   if (!deletedAdIds.includes(id)) deletedAdIds.push(id);
   if (!deletedAdIds.includes(decoded)) deletedAdIds.push(decoded);
+  persistServerData();
   res.json({ success: true, id });
 });
 

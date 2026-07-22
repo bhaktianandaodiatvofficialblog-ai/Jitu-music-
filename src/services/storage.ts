@@ -174,8 +174,9 @@ export async function syncServerData(): Promise<void> {
 
     if (resSongs && resSongs.ok && resSongs.headers.get('content-type')?.includes('application/json')) {
       const serverSongs: Song[] = await resSongs.json();
-      const filtered = serverSongs.filter((s) => !deletedSongs.includes(s.id));
-      saveSongs(filtered);
+      // Server is source of truth: filter out any song in deleted list
+      const cleanServerSongs = serverSongs.filter((s) => !deletedSongs.includes(s.id));
+      saveSongs(cleanServerSongs);
     } else {
       // Purge any local cached songs that have been marked deleted
       const currentLocal = getSongs();
@@ -185,8 +186,8 @@ export async function syncServerData(): Promise<void> {
 
     if (resAds && resAds.ok && resAds.headers.get('content-type')?.includes('application/json')) {
       const serverAds: Advertisement[] = await resAds.json();
-      const filtered = serverAds.filter((a) => !deletedAds.includes(a.id));
-      saveAds(filtered);
+      const cleanServerAds = serverAds.filter((a) => !deletedAds.includes(a.id));
+      saveAds(cleanServerAds);
     } else {
       const currentLocalAds = getAds();
       const filtered = currentLocalAds.filter((a) => !deletedAds.includes(a.id));
@@ -280,6 +281,21 @@ export async function addSong(newSong: Omit<Song, 'id' | 'viewsCount' | 'playCou
   const updated = [song, ...songs];
   saveSongs(updated);
   return song;
+}
+
+export async function clearAllSongs(): Promise<void> {
+  const current = getSongs();
+  current.forEach((s) => {
+    addDeletedSongId(s.id);
+    deleteAudioTrack(s.id);
+  });
+  saveSongs([]);
+  try {
+    await fetch('/api/admin/clear-all-songs', { method: 'POST' });
+  } catch (e) {
+    console.warn('Fallback clear all songs:', e);
+  }
+  triggerStorageEvent();
 }
 
 export async function deleteSong(songId: string): Promise<void> {

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, ShieldCheck, Upload, Music, Image as ImageIcon, Trash2, Key, Download, RefreshCw, FileText, CheckCircle2, Megaphone, PlusCircle, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { Song, Advertisement } from '../types/music';
-import { ADMIN_PIN, setAdminAuth, exportDatabaseJSON, importDatabaseJSON, resetToDefaults } from '../services/storage';
+import { ADMIN_PIN, setAdminAuth, exportDatabaseJSON, importDatabaseJSON, resetToDefaults, clearAllSongs } from '../services/storage';
 
 interface AdminPanelProps {
   isOpen: boolean;
@@ -46,6 +46,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [isAudioUploading, setIsAudioUploading] = useState(false);
   const [songSuccessMsg, setSongSuccessMsg] = useState('');
 
+  // Song Search & Audio Preview in Admin Panel
+  const [songSearchQuery, setSongSearchQuery] = useState('');
+  const [previewingSongId, setPreviewingSongId] = useState<string | null>(null);
+
   // Ad Upload Form State
   const [adTitle, setAdTitle] = useState('');
   const [adSponsor, setAdSponsor] = useState('');
@@ -56,6 +60,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // Delete Confirmation States (Inline, no browser confirm popups)
   const [deletingSongId, setDeletingSongId] = useState<string | null>(null);
   const [deletingAdId, setDeletingAdId] = useState<string | null>(null);
+  const [confirmClearAllSongs, setConfirmClearAllSongs] = useState(false);
 
   if (!isOpen) return null;
 
@@ -123,6 +128,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
     setAudioFileName(`${file.name} (${(file.size / (1024 * 1024)).toFixed(2)} MB)`);
     setIsAudioUploading(true);
+    setSongAudioUrl('');
 
     const reader = new FileReader();
     reader.onload = () => {
@@ -132,7 +138,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       setIsAudioUploading(false);
     };
     reader.onerror = () => {
-      alert('Error reading audio file.');
+      alert(language === 'or' ? 'ଗୀତ File ପଢିବାରେ ତ୍ରୁଟି ହେଲା। ଦୟାକରି ଅନ୍ୟ MP3 File ଦିଅନ୍ତୁ।' : 'Error reading audio file. Please try another MP3.');
       setIsAudioUploading(false);
     };
     reader.readAsDataURL(file);
@@ -141,6 +147,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // Handle Song Submit
   const handleSongSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isAudioUploading) {
+      alert(language === 'or' ? 'ଗୀତ Audio process ହେଉଛି, ଦୟାକରି ୨-୩ ସେକେଣ୍ଡ ଅପେକ୍ଷା କରନ୍ତୁ।' : 'Audio is still processing, please wait a few seconds.');
+      return;
+    }
     if (!songTitle.trim() || !songPosterUrl || !songAudioUrl) {
       alert(language === 'or' ? 'ଦୟାକରି Title, 1:1 Poster, ଏବଂ Audio File upload କରନ୍ତୁ।' : 'Please provide Title, 1:1 Poster Image, and Audio File!');
       return;
@@ -155,13 +165,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       description: songDescription.trim(),
     });
 
-    setSongSuccessMsg(language === 'or' ? '🎉 ଗୀତ ସଫଳତାର ସହ Upload ହେଲା! ନୂଆ ଦର୍ଶକଙ୍କୁ ଦେଖାଯିବ।' : '🎉 Song uploaded successfully! Live for all visitors.');
+    setSongSuccessMsg(language === 'or' ? '🎉 ଗୀତ ସଫଳତାର ସହ Upload ହେଲା! Admin List ରେ ଯୋଡି ହୋଇଗଲା।' : '🎉 Song uploaded successfully! Added to live list.');
     setSongTitle('');
     setSongArtist('');
     setSongPosterUrl('');
     setSongAudioUrl('');
     setSongDescription('');
-    setTimeout(() => setSongSuccessMsg(''), 4000);
+    setAudioFileName('');
+
+    // Automatically switch to Manage Songs tab so Admin can see the newly uploaded song list immediately
+    setTimeout(() => {
+      setActiveTab('manage_songs');
+      setSongSuccessMsg('');
+    }, 1200);
   };
 
   // Handle Ad Submit
@@ -491,10 +507,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       />
                     </div>
 
-                    {songAudioUrl && (
-                      <p className="text-[11px] text-emerald-400 font-semibold mt-1">
-                        ✓ Audio Track Attached
-                      </p>
+                    {isAudioUploading && (
+                      <div className="flex items-center gap-2 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold animate-pulse">
+                        <RefreshCw className="w-4 h-4 animate-spin text-amber-400 shrink-0" />
+                        <span>{language === 'or' ? '⏳ ଗୀତ Audio File Read/Process ହେଉଛି... ଦୟାକରି ୨ ସେକେଣ୍ଡ ଅପେକ୍ଷା କରନ୍ତୁ।' : '⏳ Reading & processing audio file... Please wait.'}</span>
+                      </div>
+                    )}
+
+                    {!isAudioUploading && songAudioUrl && (
+                      <div className="flex items-center gap-2 p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-semibold">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span>
+                          {audioFileName
+                            ? `✓ ${language === 'or' ? 'ଗୀତ Attach ହୋଇଗଲା:' : 'Audio File Attached:'} ${audioFileName}`
+                            : (language === 'or' ? '✓ Audio Stream URL Attached' : '✓ Audio Stream URL Attached')}
+                        </span>
+                      </div>
                     )}
                   </div>
 
@@ -513,10 +541,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                   <button
                     type="submit"
-                    className="w-full py-3 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-bold text-sm shadow-xl transition flex items-center justify-center gap-2"
+                    disabled={isAudioUploading}
+                    className={`w-full py-3 rounded-2xl font-bold text-sm shadow-xl transition flex items-center justify-center gap-2 ${
+                      isAudioUploading
+                        ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
+                        : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950'
+                    }`}
                   >
-                    <Upload className="w-4 h-4" />
-                    <span>{language === 'or' ? 'ଗୀତ Upload କରନ୍ତୁ' : 'Publish Song Live'}</span>
+                    {isAudioUploading ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>{language === 'or' ? 'Audio Uploading...' : 'Processing Audio File...'}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4" />
+                        <span>{language === 'or' ? 'ଗୀତ Upload କରନ୍ତୁ (Publish Live)' : 'Publish Song Live'}</span>
+                      </>
+                    )}
                   </button>
                 </form>
               )}
@@ -618,58 +660,138 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
               {/* TAB 3: MANAGE SONGS */}
               {activeTab === 'manage_songs' && (
-                <div className="space-y-3">
-                  <p className="text-xs text-slate-400 mb-3">
-                    {language === 'or'
-                      ? 'ଆପଣ ଯେଉଁ ଗୀତ କାଢିଦେବେ (Delete), ତାହା ଦର୍ଶକଙ୍କୁ ଆଉ ଦେଖାଯିବ ନାହିଁ।'
-                      : 'Deleting a song immediately removes it for all audience visitors.'}
-                  </p>
+                <div className="space-y-4">
+                  <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-slate-950 p-3 rounded-2xl border border-slate-800">
+                    <div className="flex items-center gap-3">
+                      <p className="text-xs text-slate-300 font-medium">
+                        {language === 'or'
+                          ? `ମୋଟ ଗୀତ ସଂଖ୍ୟା: ${songs.length} ଟି`
+                          : `Total Songs: ${songs.length}`}
+                      </p>
+
+                      {songs.length > 0 && (
+                        <>
+                          {confirmClearAllSongs ? (
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  await clearAllSongs();
+                                  setConfirmClearAllSongs(false);
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-bold animate-pulse"
+                              >
+                                {language === 'or' ? 'ହଁ, ସବୁ Delete କରନ୍ତୁ' : 'Confirm Clear All'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmClearAllSongs(false)}
+                                className="px-2 py-1 rounded-lg bg-slate-800 text-slate-300 text-[11px]"
+                              >
+                                {language === 'or' ? 'ବାତିଲ' : 'Cancel'}
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setConfirmClearAllSongs(true)}
+                              className="px-2.5 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-500/30 text-[11px] font-semibold transition"
+                            >
+                              {language === 'or' ? '🗑️ ସବୁ Delete କରନ୍ତୁ' : 'Clear All Songs'}
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+
+                    <input
+                      type="text"
+                      value={songSearchQuery}
+                      onChange={(e) => setSongSearchQuery(e.target.value)}
+                      placeholder={language === 'or' ? 'ଗୀତ / ଗାୟକ ଖୋଜନ୍ତୁ...' : 'Search song or artist...'}
+                      className="w-full sm:w-64 bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    />
+                  </div>
 
                   {songs.length === 0 ? (
-                    <p className="text-center py-8 text-slate-500 text-xs">No songs in database.</p>
+                    <div className="text-center py-12 bg-slate-950 rounded-2xl border border-slate-800">
+                      <Music className="w-10 h-10 text-slate-600 mx-auto mb-2" />
+                      <p className="text-slate-400 text-xs font-semibold">
+                        {language === 'or' ? 'କୌଣସି ଗୀତ ନାହିଁ। "ଗୀତ Upload" tab ରୁ ଗୀତ ଯୋଡନ୍ତୁ।' : 'No songs available. Upload new songs from the Upload tab.'}
+                      </p>
+                    </div>
                   ) : (
-                    songs.map((song) => (
-                      <div key={song.id} className="flex items-center justify-between bg-slate-950 p-3 rounded-2xl border border-slate-800 gap-3">
-                        <img src={song.posterUrl} alt={song.title} className="w-12 h-12 rounded-xl object-cover aspect-square border border-slate-700 shrink-0" />
-                        <div className="min-w-0 flex-1">
-                          <h4 className="font-bold text-xs text-slate-200 truncate">{song.title}</h4>
-                          <p className="text-[10px] text-slate-400 truncate">{song.artist} • {song.category}</p>
-                          <div className="flex items-center gap-3 text-[10px] text-amber-400/90 mt-1">
-                            <span>👁️ {song.viewsCount} views (3m)</span>
-                            <span>❤️ {song.likesCount}</span>
-                            <span>🔁 {song.sharesCount} shares</span>
+                    songs
+                      .filter((s) =>
+                        !songSearchQuery ||
+                        s.title.toLowerCase().includes(songSearchQuery.toLowerCase()) ||
+                        s.artist.toLowerCase().includes(songSearchQuery.toLowerCase()) ||
+                        s.category.toLowerCase().includes(songSearchQuery.toLowerCase())
+                      )
+                      .map((song) => (
+                        <div key={song.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-slate-950 p-3.5 rounded-2xl border border-slate-800 gap-3">
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <img src={song.posterUrl} alt={song.title} className="w-12 h-12 rounded-xl object-cover aspect-square border border-slate-700 shrink-0" />
+                            <div className="min-w-0 flex-1">
+                              <h4 className="font-bold text-xs text-slate-200 truncate">{song.title}</h4>
+                              <p className="text-[10px] text-slate-400 truncate">{song.artist} • <span className="text-amber-400/90 font-medium">{song.category}</span></p>
+                              <div className="flex flex-wrap items-center gap-3 text-[10px] text-slate-400 mt-1">
+                                <span>👁️ {song.viewsCount} views</span>
+                                <span>❤️ {song.likesCount}</span>
+                                <span>🔁 {song.sharesCount} shares</span>
+                              </div>
+                            </div>
                           </div>
-                        </div>
 
-                        {deletingSongId === song.id ? (
-                          <div className="flex items-center gap-1.5 shrink-0">
+                          <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                            {/* Preview Audio Player */}
                             <button
-                              onClick={() => {
-                                onDeleteSong(song.id);
-                                setDeletingSongId(null);
-                              }}
-                              className="px-3 py-2 rounded-xl bg-rose-600 text-white font-bold text-xs shadow-lg hover:bg-rose-500 animate-pulse border border-rose-400"
+                              type="button"
+                              onClick={() => setPreviewingSongId(previewingSongId === song.id ? null : song.id)}
+                              className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1 border border-slate-700 transition"
                             >
-                              {language === 'or' ? 'ହଁ, Delete' : 'Confirm'}
+                              <Music className="w-3.5 h-3.5 text-amber-400" />
+                              <span>{previewingSongId === song.id ? (language === 'or' ? 'ବନ୍ଦ କରନ୍ତୁ' : 'Stop') : (language === 'or' ? 'ଶୁଣନ୍ତୁ (Test)' : 'Preview')}</span>
                             </button>
-                            <button
-                              onClick={() => setDeletingSongId(null)}
-                              className="px-2.5 py-2 rounded-xl bg-slate-800 text-slate-300 font-semibold text-xs hover:bg-slate-700"
-                            >
-                              {language === 'or' ? 'ବାତିଲ' : 'Cancel'}
-                            </button>
+
+                            {/* Delete Button */}
+                            {deletingSongId === song.id ? (
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  onClick={() => {
+                                    onDeleteSong(song.id);
+                                    setDeletingSongId(null);
+                                  }}
+                                  className="px-3 py-1.5 rounded-xl bg-rose-600 text-white font-bold text-xs shadow-lg hover:bg-rose-500 border border-rose-400 animate-pulse"
+                                >
+                                  {language === 'or' ? 'ହଁ, Delete କରନ୍ତୁ' : 'Confirm Delete'}
+                                </button>
+                                <button
+                                  onClick={() => setDeletingSongId(null)}
+                                  className="px-2 py-1.5 rounded-xl bg-slate-800 text-slate-300 font-semibold text-xs hover:bg-slate-700"
+                                >
+                                  {language === 'or' ? 'ବାତିଲ' : 'Cancel'}
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => setDeletingSongId(song.id)}
+                                className="px-3 py-1.5 rounded-xl bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-500/30 text-xs font-bold transition flex items-center gap-1"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>Delete</span>
+                              </button>
+                            )}
                           </div>
-                        ) : (
-                          <button
-                            onClick={() => setDeletingSongId(song.id)}
-                            className="px-3 py-2 rounded-xl bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-500/30 text-xs font-bold transition shrink-0 flex items-center gap-1"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            <span>Delete</span>
-                          </button>
-                        )}
-                      </div>
-                    ))
+
+                          {/* Preview Audio Element when toggled */}
+                          {previewingSongId === song.id && song.audioUrl && (
+                            <div className="w-full mt-2 pt-2 border-t border-slate-800">
+                              <audio controls autoPlay src={song.audioUrl} className="w-full h-8 rounded-lg" />
+                            </div>
+                          )}
+                        </div>
+                      ))
                   )}
                 </div>
               )}
