@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, ShieldCheck, Upload, Music, Image as ImageIcon, Trash2, Key, Download, RefreshCw, FileText, CheckCircle2, Megaphone, PlusCircle, AlertCircle } from 'lucide-react';
+import { X, ShieldCheck, Upload, Music, Image as ImageIcon, Trash2, Key, Download, RefreshCw, FileText, CheckCircle2, Megaphone, PlusCircle, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { Song, Advertisement } from '../types/music';
 import { ADMIN_PIN, setAdminAuth, exportDatabaseJSON, importDatabaseJSON, resetToDefaults } from '../services/storage';
 
@@ -31,6 +31,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   language,
 }) => {
   const [pinInput, setPinInput] = useState('');
+  const [showPin, setShowPin] = useState(false);
   const [loginError, setLoginError] = useState('');
   const [activeTab, setActiveTab] = useState<'upload_song' | 'upload_ad' | 'manage_songs' | 'manage_ads' | 'backup'>('upload_song');
 
@@ -67,7 +68,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       setLoginError('');
       setPinInput('');
     } else {
-      setLoginError(language === 'or' ? 'ଭୁଲ ID/PIN! ଦୟାକରି ୫୪୩୨୧୩@ ଦିଅନ୍ତୁ' : 'Invalid Admin ID/PIN. Try 543213@');
+      setLoginError(language === 'or' ? 'ଭୁଲ ID / PIN! ଦୟାକରି ସଠିକ୍ ପାସୱାର୍ଡ ଦିଅନ୍ତୁ।' : 'Invalid Admin ID or PIN! Please try again.');
     }
   };
 
@@ -225,8 +226,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             <div>
               <h3 className="text-lg font-bold flex items-center gap-2">
                 <span>{language === 'or' ? 'ଅଡମିନ୍ କଣ୍ଟ୍ରୋଲ୍ ପ୍ୟାନେଲ୍' : 'Admin Control Panel'}</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono border border-amber-500/30">
-                  ID: 543213@
+                <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-medium border border-amber-500/30">
+                  {isAdminLoggedIn 
+                    ? (language === 'or' ? 'ଅଥୋରାଇଜଡ୍' : 'Authorized') 
+                    : (language === 'or' ? 'ସୁରକ୍ଷିତ ପ୍ୟାନେଲ୍' : 'Protected Panel')}
                 </span>
               </h3>
               <p className="text-xs text-slate-400">
@@ -263,19 +266,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               {language === 'or' ? 'ଅଡମିନ୍ ଲଗଇନ୍ କରନ୍ତୁ' : 'Admin Login Required'}
             </h4>
             <p className="text-xs text-slate-400 mb-6">
-              {language === 'or' ? 'ଆପଣଙ୍କ Admin ID / Password ଦିଅନ୍ତୁ: 543213@' : 'Enter Admin ID / Password: 543213@'}
+              {language === 'or' ? 'ଅଡମିନ୍ ଆସେସ୍ ପାଇଁ ଆପଣଙ୍କ PIN / ପାସୱାର୍ଡ ଦିଅନ୍ତୁ' : 'Enter your Secret Admin PIN / Password to unlock'}
             </p>
 
             <form onSubmit={handleLoginSubmit} className="w-full space-y-4">
-              <div>
+              <div className="relative">
                 <input
-                  type="password"
+                  type={showPin ? 'text' : 'password'}
                   value={pinInput}
                   onChange={(e) => setPinInput(e.target.value)}
-                  placeholder="543213@"
-                  className="w-full bg-slate-950 border border-slate-700 rounded-2xl px-4 py-3 text-center text-lg tracking-widest text-amber-300 font-mono focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  placeholder={language === 'or' ? 'ପାସୱାର୍ଡ / PIN ଦିଅନ୍ତୁ...' : 'Enter Admin PIN...'}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-2xl pl-4 pr-12 py-3 text-center text-lg tracking-widest text-amber-300 font-mono focus:outline-none focus:ring-2 focus:ring-amber-500"
                   autoFocus
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPin(!showPin)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-amber-300 rounded-lg transition"
+                  title={showPin ? 'Hide PIN' : 'Show PIN'}
+                >
+                  {showPin ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
               </div>
 
               {loginError && (
