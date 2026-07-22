@@ -220,4 +220,7 @@ app.post('/api/comments', (req, res) => {
   res.status(201).json(comment);
 });
 
-export default app;
+export default function handler(req: any, res: any) {
+  return app(req, res);
+}
+

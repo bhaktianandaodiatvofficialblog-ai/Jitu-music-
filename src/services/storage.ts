@@ -160,17 +160,17 @@ export async function syncServerData(): Promise<void> {
     const deletedSongs = getDeletedSongIds();
     const deletedAds = getDeletedAdIds();
 
-    if (resSongs && resSongs.ok) {
+    if (resSongs && resSongs.ok && resSongs.headers.get('content-type')?.includes('application/json')) {
       const serverSongs: Song[] = await resSongs.json();
       const filtered = serverSongs.filter((s) => !deletedSongs.includes(s.id));
       localStorage.setItem(SONGS_KEY, JSON.stringify(filtered));
     }
-    if (resAds && resAds.ok) {
+    if (resAds && resAds.ok && resAds.headers.get('content-type')?.includes('application/json')) {
       const serverAds: Advertisement[] = await resAds.json();
       const filtered = serverAds.filter((a) => !deletedAds.includes(a.id));
       localStorage.setItem(ADS_KEY, JSON.stringify(filtered));
     }
-    if (resComments && resComments.ok) {
+    if (resComments && resComments.ok && resComments.headers.get('content-type')?.includes('application/json')) {
       const serverComments = await resComments.json();
       localStorage.setItem(COMMENTS_KEY, JSON.stringify(serverComments));
     }
@@ -179,6 +179,7 @@ export async function syncServerData(): Promise<void> {
     console.warn('Backend server sync skipped or operating in offline fallback mode:', e);
   }
 }
+
 
 // SONGS
 export function getSongs(): Song[] {
