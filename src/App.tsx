@@ -53,10 +53,27 @@ export default function App() {
 
   // Load initial data and subscribe to storage updates across tabs & polling server
   const refreshData = () => {
-    setSongs(getSongs());
-    setAds(getAds());
-    setComments(getComments());
+    const updatedSongs = getSongs();
+    const updatedAds = getAds();
+    const updatedComments = getComments();
+
+    setSongs(updatedSongs);
+    setAds(updatedAds);
+    setComments(updatedComments);
     setIsAdminLoggedIn(checkAdminAuth());
+
+    // If current playing song was deleted by admin, clear player
+    setCurrentSong((prev) => {
+      if (prev && !updatedSongs.some((s) => s.id === prev.id)) {
+        setIsPlaying(false);
+        return null;
+      }
+      return prev;
+    });
+
+    // If share/comment modal is active for a deleted song, close it
+    setShareSong((prev) => (prev && !updatedSongs.some((s) => s.id === prev.id) ? null : prev));
+    setCommentSong((prev) => (prev && !updatedSongs.some((s) => s.id === prev.id) ? null : prev));
   };
 
   useEffect(() => {
@@ -195,7 +212,7 @@ export default function App() {
     return matchesSearch && matchesCategory;
   });
 
-  const activeAds = ads.filter((a) => a.active);
+  const activeAds = ads.filter((a) => a.active !== false);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-slate-950 pb-28">

@@ -2,8 +2,8 @@ import express from 'express';
 
 const app = express();
 
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
 // Initial default database state
 const DEFAULT_SONGS = [
@@ -110,6 +110,8 @@ const DEFAULT_COMMENTS = [
 let songs = [...DEFAULT_SONGS];
 let ads = [...DEFAULT_ADS];
 let comments = [...DEFAULT_COMMENTS];
+let deletedSongIds: string[] = [];
+let deletedAdIds: string[] = [];
 
 const ADMIN_PIN = '543213@';
 
@@ -130,11 +132,17 @@ app.post('/api/reset', (req, res) => {
   songs = [...DEFAULT_SONGS];
   ads = [...DEFAULT_ADS];
   comments = [...DEFAULT_COMMENTS];
+  deletedSongIds = [];
+  deletedAdIds = [];
   res.json({ success: true, message: 'Reset database to defaults' });
 });
 
+app.get('/api/deleted', (req, res) => {
+  res.json({ deletedSongIds, deletedAdIds });
+});
+
 app.get('/api/songs', (req, res) => {
-  res.json(songs);
+  res.json(songs.filter((s) => !deletedSongIds.includes(s.id)));
 });
 
 app.post('/api/songs', (req, res) => {
@@ -161,11 +169,13 @@ app.delete('/api/songs/:id', (req, res) => {
   const { id } = req.params;
   const decoded = decodeURIComponent(id);
   songs = songs.filter((s) => s.id !== id && s.id !== decoded);
+  if (!deletedSongIds.includes(id)) deletedSongIds.push(id);
+  if (!deletedSongIds.includes(decoded)) deletedSongIds.push(decoded);
   res.json({ success: true, id });
 });
 
 app.get('/api/ads', (req, res) => {
-  res.json(ads);
+  res.json(ads.filter((a) => !deletedAdIds.includes(a.id)));
 });
 
 app.post('/api/ads', (req, res) => {
@@ -190,6 +200,8 @@ app.delete('/api/ads/:id', (req, res) => {
   const { id } = req.params;
   const decoded = decodeURIComponent(id);
   ads = ads.filter((a) => a.id !== id && a.id !== decoded);
+  if (!deletedAdIds.includes(id)) deletedAdIds.push(id);
+  if (!deletedAdIds.includes(decoded)) deletedAdIds.push(decoded);
   res.json({ success: true, id });
 });
 

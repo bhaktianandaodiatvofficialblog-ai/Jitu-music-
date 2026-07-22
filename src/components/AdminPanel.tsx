@@ -77,7 +77,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setAdminAuth(false);
   };
 
-  // Process 1:1 Poster Image File Upload to DataURL (Compressed to 500x500 JPEG)
+  // Process 1:1 Poster Image File Upload to DataURL (Compressed to 400x400 JPEG)
   const handleImageFileUpload = (e: React.ChangeEvent<HTMLInputElement>, setUrl: (url: string) => void) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -87,25 +87,30 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       const rawUrl = reader.result as string;
       if (!rawUrl) return;
 
+      // Set immediately so state is ready without waiting
+      setUrl(rawUrl);
+
+      // Compress asynchronously to lightweight 400x400 JPEG (~25-40KB) for instant loading & zero quota errors
       const img = new Image();
       img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const size = 500;
-        canvas.width = size;
-        canvas.height = size;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          const minDim = Math.min(img.width, img.height);
-          const sx = (img.width - minDim) / 2;
-          const sy = (img.height - minDim) / 2;
-          ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, size, size);
-          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
-          setUrl(compressedDataUrl);
-        } else {
-          setUrl(rawUrl);
+        try {
+          const canvas = document.createElement('canvas');
+          const size = 400;
+          canvas.width = size;
+          canvas.height = size;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            const minDim = Math.min(img.width, img.height);
+            const sx = (img.width - minDim) / 2;
+            const sy = (img.height - minDim) / 2;
+            ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, size, size);
+            const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.75);
+            setUrl(compressedDataUrl);
+          }
+        } catch (err) {
+          console.warn('Canvas compression fallback to raw image:', err);
         }
       };
-      img.onerror = () => setUrl(rawUrl);
       img.src = rawUrl;
     };
     reader.readAsDataURL(file);

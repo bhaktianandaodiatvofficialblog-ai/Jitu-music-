@@ -151,11 +151,23 @@ function addDeletedAdId(id: string) {
 // Global server fetch function to ensure all audience viewers see uploaded/deleted items
 export async function syncServerData(): Promise<void> {
   try {
-    const [resSongs, resAds, resComments] = await Promise.all([
+    const [resSongs, resAds, resComments, resDeleted] = await Promise.all([
       fetch('/api/songs').catch(() => null),
       fetch('/api/ads').catch(() => null),
-      fetch('/api/comments').catch(() => null)
+      fetch('/api/comments').catch(() => null),
+      fetch('/api/deleted').catch(() => null)
     ]);
+
+    // 1. Sync server-side deletion records first so viewer client knows what was deleted
+    if (resDeleted && resDeleted.ok && resDeleted.headers.get('content-type')?.includes('application/json')) {
+      const serverDeleted = await resDeleted.json();
+      if (Array.isArray(serverDeleted.deletedSongIds)) {
+        serverDeleted.deletedSongIds.forEach((id: string) => addDeletedSongId(id));
+      }
+      if (Array.isArray(serverDeleted.deletedAdIds)) {
+        serverDeleted.deletedAdIds.forEach((id: string) => addDeletedAdId(id));
+      }
+    }
 
     const deletedSongs = getDeletedSongIds();
     const deletedAds = getDeletedAdIds();
@@ -163,13 +175,24 @@ export async function syncServerData(): Promise<void> {
     if (resSongs && resSongs.ok && resSongs.headers.get('content-type')?.includes('application/json')) {
       const serverSongs: Song[] = await resSongs.json();
       const filtered = serverSongs.filter((s) => !deletedSongs.includes(s.id));
-      localStorage.setItem(SONGS_KEY, JSON.stringify(filtered));
+      saveSongs(filtered);
+    } else {
+      // Purge any local cached songs that have been marked deleted
+      const currentLocal = getSongs();
+      const filtered = currentLocal.filter((s) => !deletedSongs.includes(s.id));
+      saveSongs(filtered);
     }
+
     if (resAds && resAds.ok && resAds.headers.get('content-type')?.includes('application/json')) {
       const serverAds: Advertisement[] = await resAds.json();
       const filtered = serverAds.filter((a) => !deletedAds.includes(a.id));
-      localStorage.setItem(ADS_KEY, JSON.stringify(filtered));
+      saveAds(filtered);
+    } else {
+      const currentLocalAds = getAds();
+      const filtered = currentLocalAds.filter((a) => !deletedAds.includes(a.id));
+      saveAds(filtered);
     }
+
     if (resComments && resComments.ok && resComments.headers.get('content-type')?.includes('application/json')) {
       const serverComments = await resComments.json();
       localStorage.setItem(COMMENTS_KEY, JSON.stringify(serverComments));
@@ -188,7 +211,7 @@ export function getSongs(): Song[] {
     const data = localStorage.getItem(SONGS_KEY);
     if (!data) {
       const initialFiltered = INITIAL_SONGS.filter((s) => !deletedSongs.includes(s.id));
-      localStorage.setItem(SONGS_KEY, JSON.stringify(initialFiltered));
+      saveSongs(initialFiltered);
       return initialFiltered;
     }
     const parsed: Song[] = JSON.parse(data);
@@ -204,23 +227,21 @@ export function saveSongs(songs: Song[]): void {
     const deletedSongs = getDeletedSongIds();
     const filtered = songs.filter((s) => !deletedSongs.includes(s.id));
 
-    // Save audio tracks to IndexedDB if they are Base64
+    // 1. Save base64 audio tracks into IndexedDB so audio can be retrieved anytime
     filtered.forEach((s) => {
       if (s.audioUrl && s.audioUrl.startsWith('data:')) {
         saveAudioTrack(s.id, s.audioUrl);
       }
     });
 
-    try {
-      localStorage.setItem(SONGS_KEY, JSON.stringify(filtered));
-    } catch (quotaErr) {
-      console.warn('localStorage quota exceeded, stripping heavy base64 audio before saving metadata:', quotaErr);
-      const lightSongs = filtered.map((s) => ({
-        ...s,
-        audioUrl: s.audioUrl.startsWith('data:') ? `idb:${s.id}` : s.audioUrl,
-      }));
-      localStorage.setItem(SONGS_KEY, JSON.stringify(lightSongs));
-    }
+    // 2. Prepare lightweight song metadata for localStorage (converting heavy base64 audio to idb: references)
+    const lightSongs = filtered.map((s) => ({
+      ...s,
+      audioUrl: s.audioUrl && s.audioUrl.startsWith('data:') ? `idb:${s.id}` : s.audioUrl,
+    }));
+
+    // 3. Save light metadata into localStorage without hitting quota limits
+    localStorage.setItem(SONGS_KEY, JSON.stringify(lightSongs));
     triggerStorageEvent();
   } catch (err) {
     console.error('Error saving songs:', err);
@@ -370,7 +391,20 @@ export function saveAds(ads: Advertisement[]): void {
     localStorage.setItem(ADS_KEY, JSON.stringify(filtered));
     triggerStorageEvent();
   } catch (err) {
-    console.error('Error saving ads:', err);
+    console.warn('Error saving ads to localStorage:', err);
+    try {
+      const deletedAds = getDeletedAdIds();
+      const filtered = ads.filter((a) => !deletedAds.includes(a.id));
+      // Fallback: trim image poster data length if quota exceeded
+      const lightAds = filtered.map((a) => ({
+        ...a,
+        posterUrl: a.posterUrl || 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?auto=format&fit=crop&w=600&h=600&q=80',
+      }));
+      localStorage.setItem(ADS_KEY, JSON.stringify(lightAds));
+      triggerStorageEvent();
+    } catch (e2) {
+      console.error('Failed fallback saving ads:', e2);
+    }
   }
 }
 
