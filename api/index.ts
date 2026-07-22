@@ -135,10 +135,13 @@ function loadServerData() {
 
 function persistServerData() {
   try {
-    fs.writeFileSync(
+    fs.writeFile(
       DATA_FILE,
       JSON.stringify({ songs, ads, comments, deletedSongIds, deletedAdIds }),
-      'utf-8'
+      'utf-8',
+      (err) => {
+        if (err) console.warn('Could not persist server data file:', err);
+      }
     );
   } catch (e) {
     console.warn('Could not persist server data file:', e);

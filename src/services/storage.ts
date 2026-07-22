@@ -250,24 +250,7 @@ export function saveSongs(songs: Song[]): void {
 }
 
 export async function addSong(newSong: Omit<Song, 'id' | 'viewsCount' | 'playCount' | 'likesCount' | 'sharesCount' | 'createdAt'>): Promise<Song> {
-  try {
-    const res = await fetch('/api/songs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newSong),
-    });
-    if (res.ok) {
-      const created: Song = await res.json();
-      const current = getSongs();
-      const updated = [created, ...current.filter((s) => s.id !== created.id)];
-      saveSongs(updated);
-      return created;
-    }
-  } catch (e) {
-    console.warn('Fallback to local song storage:', e);
-  }
-
-  // Local fallback
+  // 1. Create song object with unique ID
   const songs = getSongs();
   const song: Song = {
     ...newSong,
@@ -278,8 +261,29 @@ export async function addSong(newSong: Omit<Song, 'id' | 'viewsCount' | 'playCou
     sharesCount: 0,
     createdAt: new Date().toISOString(),
   };
+
+  // 2. Save locally and to IndexedDB immediately so upload succeeds instantly
   const updated = [song, ...songs];
   saveSongs(updated);
+
+  // 3. Sync to backend server
+  try {
+    const res = await fetch('/api/songs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(song),
+    });
+    if (res.ok) {
+      const serverSong: Song = await res.json();
+      const current = getSongs();
+      const synced = current.map((s) => (s.id === song.id ? serverSong : s));
+      saveSongs(synced);
+      return serverSong;
+    }
+  } catch (e) {
+    console.warn('Server sync for song upload, using local copy:', e);
+  }
+
   return song;
 }
 

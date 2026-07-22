@@ -44,6 +44,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [songAudioUrl, setSongAudioUrl] = useState('');
   const [audioFileName, setAudioFileName] = useState('');
   const [isAudioUploading, setIsAudioUploading] = useState(false);
+  const [isSubmittingSong, setIsSubmittingSong] = useState(false);
   const [songSuccessMsg, setSongSuccessMsg] = useState('');
 
   // Song Search & Audio Preview in Admin Panel
@@ -145,7 +146,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   // Handle Song Submit
-  const handleSongSubmit = (e: React.FormEvent) => {
+  const handleSongSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isAudioUploading) {
       alert(language === 'or' ? 'ଗୀତ Audio process ହେଉଛି, ଦୟାକରି ୨-୩ ସେକେଣ୍ଡ ଅପେକ୍ଷା କରନ୍ତୁ।' : 'Audio is still processing, please wait a few seconds.');
@@ -156,28 +157,36 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       return;
     }
 
-    onAddSong({
-      title: songTitle.trim(),
-      artist: songArtist.trim() || 'Unknown Artist',
-      posterUrl: songPosterUrl,
-      audioUrl: songAudioUrl,
-      category: songCategory,
-      description: songDescription.trim(),
-    });
+    setIsSubmittingSong(true);
+    setSongSuccessMsg('');
 
-    setSongSuccessMsg(language === 'or' ? '🎉 ଗୀତ ସଫଳତାର ସହ Upload ହେଲା! Admin List ରେ ଯୋଡି ହୋଇଗଲା।' : '🎉 Song uploaded successfully! Added to live list.');
-    setSongTitle('');
-    setSongArtist('');
-    setSongPosterUrl('');
-    setSongAudioUrl('');
-    setSongDescription('');
-    setAudioFileName('');
+    try {
+      await onAddSong({
+        title: songTitle.trim(),
+        artist: songArtist.trim() || (language === 'or' ? 'ଅଜଣା ଗାୟକ' : 'Unknown Artist'),
+        posterUrl: songPosterUrl,
+        audioUrl: songAudioUrl,
+        category: songCategory,
+        description: songDescription.trim(),
+      });
 
-    // Automatically switch to Manage Songs tab so Admin can see the newly uploaded song list immediately
-    setTimeout(() => {
-      setActiveTab('manage_songs');
-      setSongSuccessMsg('');
-    }, 1200);
+      setSongSuccessMsg(
+        language === 'or'
+          ? '🎉 ଗୀତ ସଫଳତାର ସହ Upload ହୋଇଗଲା! Live App ରେ ଯୋଡି ହୋଇଗଲା।'
+          : '🎉 Song uploaded successfully! Live for all listeners.'
+      );
+      setSongTitle('');
+      setSongArtist('');
+      setSongPosterUrl('');
+      setSongAudioUrl('');
+      setSongDescription('');
+      setAudioFileName('');
+    } catch (err) {
+      console.error('Upload error:', err);
+      alert(language === 'or' ? 'Upload ରେ ତ୍ରୁଟି ହେଲା। ଦୟାକରି ପୁଣି ଚେଷ୍ଟା କରନ୍ତୁ।' : 'Error uploading song. Please try again.');
+    } finally {
+      setIsSubmittingSong(false);
+    }
   };
 
   // Handle Ad Submit
@@ -399,9 +408,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               {activeTab === 'upload_song' && (
                 <form onSubmit={handleSongSubmit} className="space-y-4 max-w-xl mx-auto">
                   {songSuccessMsg && (
-                    <div className="bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 p-3 rounded-2xl flex items-center gap-2 text-xs font-bold">
-                      <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-                      <span>{songSuccessMsg}</span>
+                    <div className="bg-emerald-500/20 border-2 border-emerald-500/50 text-emerald-300 p-4 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-xs font-bold shadow-xl">
+                      <div className="flex items-center gap-2.5">
+                        <CheckCircle2 className="w-6 h-6 text-emerald-400 shrink-0" />
+                        <span className="text-sm">{songSuccessMsg}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('manage_songs')}
+                        className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs shrink-0 transition shadow-md flex items-center gap-1.5"
+                      >
+                        <Music className="w-4 h-4" />
+                        <span>{language === 'or' ? '🎵 ଗୀତ ତାଲିକା ଦେଖନ୍ତୁ' : '🎵 View Songs List'}</span>
+                      </button>
                     </div>
                   )}
 
@@ -541,14 +560,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                   <button
                     type="submit"
-                    disabled={isAudioUploading}
+                    disabled={isAudioUploading || isSubmittingSong}
                     className={`w-full py-3 rounded-2xl font-bold text-sm shadow-xl transition flex items-center justify-center gap-2 ${
-                      isAudioUploading
+                      isAudioUploading || isSubmittingSong
                         ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
                         : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950'
                     }`}
                   >
-                    {isAudioUploading ? (
+                    {isSubmittingSong ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>{language === 'or' ? 'ଗୀତ Upload ହେଉଛି... (Please wait)' : 'Uploading Song Live...'}</span>
+                      </>
+                    ) : isAudioUploading ? (
                       <>
                         <RefreshCw className="w-4 h-4 animate-spin" />
                         <span>{language === 'or' ? 'Audio Uploading...' : 'Processing Audio File...'}</span>
