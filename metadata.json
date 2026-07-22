@@ -1,0 +1,6 @@
+{
+  "name": "Odia Music Player & Ad Portal",
+  "description": "Stream audio tracks with 1:1 cover posters, 3-minute listening view counter, advertisement banners, social sharing, interactive comments, and admin management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
