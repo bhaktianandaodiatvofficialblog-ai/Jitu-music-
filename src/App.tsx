@@ -1,43 +1,41 @@
-import React, { useEffect, useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
-import { Play, Pause, Music } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { createClient } from '@supabase/supabase-js'; // ଯଦି Supabase ବ୍ୟବହାର କରୁଛନ୍ତି
 
-// Initialize Supabase Client
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://your-supabase-url.supabase.co';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'your-anon-key';
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Supabase Client (ଆପଣଙ୍କ API URL ଓ Key)
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabase = createClient(supabaseUrl, supabaseKey);
 
-export interface Song {
-  id: string;
-  title: string;
-  artist: string;
-  url: string;
-  plays?: number;
-  created_at?: string;
-}
+export default function SongsHomePage() {
+  const [songs, setSongs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [searchTerm, setSearchTerm] = useState('');
 
-export default function SongsList() {
-  const [songs, setSongs] = useState<Song[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [currentSong, setCurrentSong] = useState<Song | null>(null);
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
-
-  // Fetch Live Songs from Supabase
+  // ୧. Supabase / Live API ରୁ ଗୀତ Fetch କରିବା
   const fetchLiveSongs = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+
+      // (Option A) Supabase ରୁ Fetch କଲେ:
+      let { data, error } = await supabase
         .from('songs')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('createdAt', { ascending: false });
 
-      if (error) {
-        console.error('Error fetching songs from Supabase:', error);
-      } else if (data) {
+      // (Option B) REST API / Express Server ରୁ Fetch କଲେ:
+      if (!data || error) {
+        const res = await fetch('/api/songs');
+        if (res.ok) {
+          data = await res.json();
+        }
+      }
+
+      if (data) {
         setSongs(data);
       }
     } catch (err) {
-      console.error('Unexpected error:', err);
+      console.error('Error fetching live songs:', err);
     } finally {
       setLoading(false);
     }
@@ -46,86 +44,92 @@ export default function SongsList() {
   useEffect(() => {
     fetchLiveSongs();
 
-    // Real-time subscription for instant updates on new song uploads
-    const channel = supabase
-      .channel('songs-db-changes')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'songs' },
-        (payload) => {
-          setSongs((prevSongs) => [payload.new as Song, ...prevSongs]);
-        }
-      )
-      .subscribe();
+    // ୫ ସେକେଣ୍ଡରେ ଥରେ ଅଟୋ-ସିଙ୍କ୍
+    const interval = setInterval(() => {
+      fetchLiveSongs();
+    }, 5000);
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => clearInterval(interval);
   }, []);
 
-  const handlePlayToggle = (song: Song) => {
-    if (currentSong?.id === song.id) {
-      setIsPlaying(!isPlaying);
-    } else {
-      setCurrentSong(song);
-      setIsPlaying(true);
-    }
-  };
+  // ୨. Category ଓ Search Filter Logic
+  const filteredSongs = songs.filter((song) => {
+    const term = searchTerm.trim().toLowerCase();
+    const matchesSearch =
+      !term ||
+      song.title?.toLowerCase().includes(term) ||
+      song.artist?.toLowerCase().includes(term) ||
+      song.category?.toLowerCase().includes(term);
 
-  if (loading) {
-    return <p className="text-xs text-neutral-400 py-4">Loading songs...</p>;
-  }
+    const isAll =
+      !selectedCategory ||
+      selectedCategory === 'All' ||
+      selectedCategory === 'ସବୁ (All)' ||
+      selectedCategory.toLowerCase().includes('all');
+
+    const matchesCategory =
+      isAll ||
+      song.category?.trim().toLowerCase() === selectedCategory.trim().toLowerCase();
+
+    return matchesSearch && matchesCategory;
+  });
 
   return (
-    <div className="space-y-4">
-      <h3 className="text-lg font-bold text-white flex items-center gap-2 font-serif">
-        <Music className="w-5 h-5 text-amber-500" /> ଭକ୍ତି ସଙ୍ଗୀତ (Live Songs)
-      </h3>
+    <div className="min-h-screen bg-slate-950 text-white p-6">
+      <h1 className="text-2xl font-bold text-amber-400 mb-4">
+        🎵 ଲାଇଭ୍ ଓଡ଼ିଆ ଗୀତ ତାଲିକା ({filteredSongs.length})
+      </h1>
 
-      {songs.length === 0 ? (
-        <p className="text-xs text-neutral-500 py-4">No songs found.</p>
+      {/* Category Tabs */}
+      <div className="flex gap-2 overflow-x-auto pb-4">
+        {['All', 'Odia Modern', 'Bhajan', 'Sambalpuri', 'Jatra', 'Romantic'].map((cat) => (
+          <button
+            key={cat}
+            onClick={() => setSelectedCategory(cat)}
+            className={`px-4 py-1.5 rounded-full text-xs font-bold transition ${
+              selectedCategory === cat ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-300'
+            }`}
+          >
+            {cat}
+          </button>
+        ))}
+      </div>
+
+      {/* Songs Grid */}
+      {loading && songs.length === 0 ? (
+        <p className="text-slate-400">ଗୀତ ଲୋଡ୍ ହେଉଛି...</p>
+      ) : filteredSongs.length === 0 ? (
+        <div className="p-8 text-center bg-slate-900 rounded-2xl border border-slate-800">
+          <p className="text-slate-400">କୌଣସି ଗୀତ ମିଳିଲା ନାହିଁ।</p>
+          <button
+            onClick={() => { setSelectedCategory('All'); setSearchTerm(''); }}
+            className="mt-3 px-4 py-2 bg-amber-500 text-slate-950 font-bold text-xs rounded-xl"
+          >
+            ସବୁ ଗୀତ ଦେଖନ୍ତୁ (Show All Songs)
+          </button>
+        </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {songs.map((song) => {
-            const isCurrent = currentSong?.id === song.id;
-            return (
-              <div
-                key={song.id}
-                className={`p-4 rounded-2xl border transition-all flex items-center justify-between gap-4 ${
-                  isCurrent
-                    ? 'bg-amber-500/10 border-amber-500/40'
-                    : 'bg-neutral-900/40 border-neutral-800 hover:border-neutral-700'
-                }`}
-              >
-                <div className="flex items-center gap-3.5 min-w-0">
-                  <button
-                    onClick={() => handlePlayToggle(song)}
-                    className={`p-3 rounded-xl flex items-center justify-center shrink-0 transition-all ${
-                      isCurrent
-                        ? 'bg-amber-500 text-black'
-                        : 'bg-neutral-950 text-amber-500 border border-neutral-800'
-                    }`}
-                  >
-                    {isCurrent && isPlaying ? (
-                      <Pause className="w-4 h-4 fill-current" />
-                    ) : (
-                      <Play className="w-4 h-4 fill-current ml-0.5" />
-                    )}
-                  </button>
-                  <div className="min-w-0">
-                    <h4 className={`text-xs font-bold truncate ${isCurrent ? 'text-amber-500' : 'text-neutral-100'}`}>
-                      {song.title}
-                    </h4>
-                    <p className="text-[11px] text-neutral-400 mt-0.5 truncate">{song.artist}</p>
-                  </div>
-                </div>
-
-                <div className="text-[10px] text-neutral-500 font-mono">
-                  {song.plays ? `${song.plays} plays` : ''}
-                </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+          {filteredSongs.map((song) => (
+            <div
+              key={song.id}
+              className="bg-slate-900 border border-slate-800 p-3 rounded-2xl flex flex-col hover:border-amber-500/50 transition"
+            >
+              {/* 1:1 Poster Image */}
+              <div className="aspect-square rounded-xl overflow-hidden mb-2 bg-slate-800">
+                <img
+                  src={song.posterUrl || 'https://via.placeholder.com/300'}
+                  alt={song.title}
+                  className="w-full h-full object-cover"
+                />
               </div>
-            );
-          })}
+              <span className="text-[10px] bg-amber-500/20 text-amber-300 font-bold px-2 py-0.5 rounded w-fit mb-1">
+                {song.category}
+              </span>
+              <h3 className="text-xs font-bold text-slate-100 truncate">{song.title}</h3>
+              <p className="text-[11px] text-slate-400 truncate">{song.artist}</p>
+            </div>
+          ))}
         </div>
       )}
     </div>
